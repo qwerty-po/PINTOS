@@ -1,6 +1,7 @@
 # PINTOS
 
 ## 2021/8/29
+```
 initial state, achieve is
 pass tests/threads/alarm-single
 pass tests/threads/alarm-multiple
@@ -30,5 +31,6 @@ FAIL tests/threads/mlfqs-nice-2
 FAIL tests/threads/mlfqs-nice-10
 FAIL tests/threads/mlfqs-block
 20 of 27 tests failed.
+```
 
 ##
