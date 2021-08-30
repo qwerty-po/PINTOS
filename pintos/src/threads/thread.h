@@ -100,6 +100,15 @@ struct thread
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
+
+    /* made for busy waiting */
+    uint64_t wakeup_tick;
+
+    /* made for priority donation */
+    int initial_priority;
+    int donated_priority;
+    struct list_elem donation_elem;
+    struct lock *inlock;
   };
 
 /* If false (default), use round-robin scheduler.
@@ -137,5 +146,12 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+
+/* busy waiting functions */
+bool compare_wakeup_ticks(const struct list_elem *victim, const struct list_elem *e, void *aux);
+struct list* get_sleep_list();
+
+/* priority queue functions */
+bool compare_thread_priority(const struct list_elem *victim, const struct list_elem *e, void *aux);
 
 #endif /* threads/thread.h */

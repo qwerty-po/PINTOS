@@ -15,10 +15,14 @@
 #include "userprog/process.h"
 #endif
 
+
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
    of thread.h for details. */
 #define THREAD_MAGIC 0xcd6abf4b
+
+/* List of busy waiting */
+static struct list sleep_list;
 
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
@@ -92,6 +96,7 @@ thread_init (void)
   lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
+  list_init (&sleep_list);
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
@@ -133,7 +138,7 @@ thread_tick (void)
 #endif
   else
     kernel_ticks++;
-
+  
   /* Enforce preemption. */
   if (++thread_ticks >= TIME_SLICE)
     intr_yield_on_return ();
@@ -209,6 +214,8 @@ thread_create (const char *name, int priority,
   /* Add to run queue. */
   thread_unblock (t);
 
+  thread_set_priority(thread_current()->priority);
+
   return tid;
 }
 
@@ -245,8 +252,11 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_push_back (&ready_list, &t->elem);
+  // list_push_back (&ready_list, &t->elem);
+  list_insert_ordered(&ready_list, &(t->elem), compare_thread_priority, NULL);
+
   t->status = THREAD_READY;
+
   intr_set_level (old_level);
 }
 
@@ -316,7 +326,8 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-    list_push_back (&ready_list, &cur->elem);
+    list_insert_ordered(&ready_list, &(cur->elem), compare_thread_priority, NULL);
+    // list_push_back (&ready_list, &cur->elem);
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -344,6 +355,9 @@ void
 thread_set_priority (int new_priority) 
 {
   thread_current ()->priority = new_priority;
+
+  if(new_priority < list_entry(list_begin(&ready_list), struct thread, elem)->priority)
+    thread_yield();
 }
 
 /* Returns the current thread's priority. */
@@ -469,6 +483,10 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
+  t->donated_priority = t->initial_priority = t->priority;
+  t->inlock = NULL;
+  list_init(&(t->donation_elem));
+
   list_push_back (&all_list, &t->allelem);
 }
 
@@ -584,4 +602,27 @@ allocate_tid (void)
 
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
-uint32_t thread_stack_ofs = offsetof (struct thread, stack);
+uint32_t thread_stack_ofs = offsetof(struct thread, stack);
+
+/* busy waiting functions */
+bool compare_wakeup_ticks(const struct list_elem *victim, const struct list_elem *e, void *aux)
+{
+  if(list_entry(victim, struct thread, elem)->wakeup_tick < list_entry(e, struct thread, elem)->wakeup_tick)
+    return true;
+  else
+    return false;
+}
+
+struct list* get_sleep_list()
+{
+  return &sleep_list;
+}
+
+/* priority queue functions */
+bool compare_thread_priority(const struct list_elem *victim, const struct list_elem *e, void *aux)
+{
+  if(list_entry(victim, struct thread, elem)->priority > list_entry(e, struct thread, elem)->priority)
+    return true;
+  else
+    return false;
+}
