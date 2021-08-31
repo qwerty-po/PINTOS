@@ -69,11 +69,11 @@ sema_down (struct semaphore *sema)
   list_sort(&(sema->waiters), compare_thread_priority, NULL);
 
   while (sema->value == 0) 
-    {
-      // list_push_back (&sema->waiters, &thread_current ()->elem);
-      list_insert_ordered(&sema->waiters, &(thread_current()->elem), compare_thread_priority, NULL);
-      thread_block ();
-    }
+  {
+    // list_push_back (&sema->waiters, &thread_current ()->elem);
+    list_insert_ordered(&sema->waiters, &(thread_current()->elem), compare_thread_priority, NULL);
+    thread_block ();
+  }
   sema->value--;
   intr_set_level (old_level);
 }
@@ -125,7 +125,7 @@ sema_up (struct semaphore *sema)
   sema->value++;
   intr_set_level (old_level);
 
-  thread_set_priority(thread_current()->priority);
+  ready_priority_vs_curr_priority();
 }
 
 static void sema_test_helper (void *sema_);
@@ -204,8 +204,16 @@ lock_acquire (struct lock *lock)
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
 
+  if(lock->holder != NULL)
+  {
+    list_push_back(&(lock->holder->donations), &thread_current()->donation_elem);
+    thread_current()->inlock = lock;
+    acquire_priority_donation(lock);
+  }
+
   sema_down (&lock->semaphore);
-  lock->holder = thread_current ();
+  thread_current()->inlock = NULL;
+  lock->holder = thread_current();
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -240,6 +248,9 @@ lock_release (struct lock *lock)
   ASSERT (lock_held_by_current_thread (lock));
 
   lock->holder = NULL;
+
+  release_priority_donation(lock);
+  
   sema_up (&lock->semaphore);
 }
 
@@ -356,3 +367,36 @@ bool compare_sema_priority(const struct list_elem *victim, const struct list_ele
 
   return compare_thread_priority(list_begin(&(victim_sema_elem->semaphore.waiters)), list_begin(&(e_sema_elem->semaphore).waiters), NULL);
 }
+
+void acquire_priority_donation(struct lock *lock)
+{
+  /* nested donation */
+  for(; lock != NULL; lock = lock->holder->inlock)
+    lock->holder->priority = max(lock->holder->priority, thread_get_priority());
+}
+
+void release_priority_donation(struct lock *lock)
+{
+  struct list_elem *donated_elem = list_begin(&(thread_current()->donations));
+  int max_donated_in_left = -1;
+
+  while(donated_elem != list_end(&(thread_current()->donations)))
+  {
+    struct thread *donated_thread = list_entry(donated_elem, struct thread, donation_elem);
+    
+    if(donated_thread->inlock == lock)
+    {
+      struct list_elem * old_donated_elem = donated_elem;
+      donated_elem = list_next(donated_elem);
+      list_remove(old_donated_elem);
+    }
+    else
+    {
+      max_donated_in_left = max(max_donated_in_left, donated_thread->priority);
+      donated_elem = list_next(donated_elem);
+    }
+    
+  }
+  thread_current()->priority = max(thread_current()->initial_priority, max_donated_in_left);
+}
+

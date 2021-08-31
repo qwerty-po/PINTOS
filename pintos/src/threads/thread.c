@@ -214,7 +214,7 @@ thread_create (const char *name, int priority,
   /* Add to run queue. */
   thread_unblock (t);
 
-  thread_set_priority(thread_current()->priority);
+  ready_priority_vs_curr_priority();
 
   return tid;
 }
@@ -354,10 +354,13 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  thread_current ()->priority = new_priority;
+  struct list_elem *donated_elem = list_begin(&(thread_current()->donations));
+  thread_current()->priority = thread_current()->initial_priority = new_priority;
 
-  if(new_priority < list_entry(list_begin(&ready_list), struct thread, elem)->priority)
-    thread_yield();
+  for(; donated_elem != list_end(&(thread_current()->donations)); donated_elem = list_next(donated_elem))
+    thread_current()->priority =  max(list_entry(donated_elem, struct thread, donation_elem)->priority, thread_current()->priority);
+
+  ready_priority_vs_curr_priority();
 }
 
 /* Returns the current thread's priority. */
@@ -483,9 +486,9 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
-  t->donated_priority = t->initial_priority = t->priority;
+  t->initial_priority = t->priority;
   t->inlock = NULL;
-  list_init(&(t->donation_elem));
+  list_init(&(t->donations));
 
   list_push_back (&all_list, &t->allelem);
 }
@@ -625,4 +628,15 @@ bool compare_thread_priority(const struct list_elem *victim, const struct list_e
     return true;
   else
     return false;
+}
+
+void ready_priority_vs_curr_priority()
+{
+  if(thread_get_priority() < list_entry(list_begin(&ready_list), struct thread, elem)->priority)
+    thread_yield();
+}
+
+int max(int x, int y)
+{
+  return x > y ? x : y;
 }

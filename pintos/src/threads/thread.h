@@ -106,7 +106,7 @@ struct thread
 
     /* made for priority donation */
     int initial_priority;
-    int donated_priority;
+    struct list donations;
     struct list_elem donation_elem;
     struct lock *inlock;
   };
@@ -149,9 +149,12 @@ int thread_get_load_avg (void);
 
 /* busy waiting functions */
 bool compare_wakeup_ticks(const struct list_elem *victim, const struct list_elem *e, void *aux);
-struct list* get_sleep_list();
+struct list* get_sleep_list(void);
 
 /* priority queue functions */
 bool compare_thread_priority(const struct list_elem *victim, const struct list_elem *e, void *aux);
+void ready_priority_vs_curr_priority(void);
+
+int max(int x, int y);
 
 #endif /* threads/thread.h */
