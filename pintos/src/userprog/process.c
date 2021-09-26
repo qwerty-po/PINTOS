@@ -20,6 +20,9 @@
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
+static void reg_push (void **esp, size_t value, int rep);
+static void set(void *ptr, size_t value);
+static int  align_to_size_t(int value);
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -37,6 +40,8 @@ process_execute (const char *file_name)
   if (fn_copy == NULL)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
+
+  file_name = strtok_r (fn_copy, " ", &file_name);
 
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
@@ -219,7 +224,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
   t->pagedir = pagedir_create ();
   if (t->pagedir == NULL) 
     goto done;
-  process_activate ();
+  process_activate ();ㅊ
 
   /* Open executable file. */
   file = filesys_open (file_name);
@@ -304,6 +309,30 @@ load (const char *file_name, void (**eip) (void), void **esp)
   /* Set up stack. */
   if (!setup_stack (esp))
     goto done;
+
+  int argc = 0;
+  int align_len = align_to_size_t(strlen(file_name)+1)/4;
+  void **ebp = esp;
+  char *token, *save_ptr;
+
+  for (token = strtok_r (file_name, " ", &save_ptr); token != NULL; token = strtok_r (NULL, " ", &save_ptr))
+    argc++;
+
+  reg_push(esp, 0, align_len);
+  reg_push(esp, 0, argc+1);
+  strlcpy((*ebp)-strlen(file_name)-1, file_name, strlen(file_name)+1);
+
+  set(*esp, 0);
+  set((*esp)-0x4, argc);
+  set((*esp)-0x8, (*esp)-0xc);
+
+  i = 0;
+  size_t align_start = (*ebp)-strlen(file_name);
+  for (token = strtok_r (file_name, " ", &save_ptr); token != NULL; token = strtok_r (NULL, " ", &save_ptr), i++)
+  {
+    set((*esp)-0x4*(3+i), align_start);
+    align_len += strlen(token)+1;
+  }
 
   /* Start address. */
   *eip = (void (*) (void)) ehdr.e_entry;
@@ -463,3 +492,29 @@ install_page (void *upage, void *kpage, bool writable)
   return (pagedir_get_page (t->pagedir, upage) == NULL
           && pagedir_set_page (t->pagedir, upage, kpage, writable));
 }
+
+static void reg_push (void **esp, size_t value, int rep)
+{
+  size_t **_esp = esp;
+
+  while(--rep)
+  {
+    **_esp = value;
+    *_esp -= 4;
+  }
+}
+
+static void set(void *ptr, size_t value)
+{
+  size_t *_ptr = ptr;
+  *_ptr = value;
+}
+
+static int align_to_size_t(int value)
+{
+  if(value % sizeof(size_t))
+    return ((value/4) + 1) * 4;
+  else
+    return value;
+}
+

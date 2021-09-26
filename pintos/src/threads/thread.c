@@ -21,6 +21,19 @@
    of thread.h for details. */
 #define THREAD_MAGIC 0xcd6abf4b
 
+#define F (1<<14)
+#define NEG (1<<31)
+#define N2F(n) ((n)*F)
+#define X2I_R2Z(x) ((x)/F)
+#define X2I_R2N(x) (((((x)-F/2)/F)&((int)(x)>>31)) + ((((x)+F/2)/F)&(~((int)(x)>>31))))
+#define ADD(x, n) ((x) + (n)*F)
+#define SUB(x, n) ((x) - (n)*F)
+#define MUL_Y(x, y) (((int64_t) (x)) * (y) / F)
+#define MUL_N(x, n) ((x)*n)
+#define DIV_Y(x, y) (((int64_t) (x)) * F / (y))
+#define DIV_N(x, n) ((x)/n)
+
+
 /* List of busy waiting */
 static struct list sleep_list;
 
@@ -63,6 +76,8 @@ static unsigned thread_ticks;   /* # of timer ticks since last yield. */
    Controlled by kernel command-line option "-o mlfqs". */
 bool thread_mlfqs;
 
+static int load_avg = 0;
+
 static void kernel_thread (thread_func *, void *aux);
 
 static void idle (void *aux UNUSED);
@@ -98,6 +113,9 @@ thread_init (void)
   list_init (&all_list);
   list_init (&sleep_list);
 
+  initial_thread->nice = 0;
+  initial_thread->recent_cpu = 0;
+
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
   init_thread (initial_thread, "main", PRI_DEFAULT);
@@ -114,6 +132,7 @@ thread_start (void)
   struct semaphore idle_started;
   sema_init (&idle_started, 0);
   thread_create ("idle", PRI_MIN, idle, &idle_started);
+  load_avg = 0;
 
   /* Start preemptive thread scheduling. */
   intr_enable ();
@@ -354,6 +373,9 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
+  if(thread_mlfqs)
+    return;
+
   struct list_elem *donated_elem = list_begin(&(thread_current()->donations));
   thread_current()->priority = thread_current()->initial_priority = new_priority;
 
@@ -374,32 +396,108 @@ thread_get_priority (void)
 void
 thread_set_nice (int nice UNUSED) 
 {
-  /* Not yet implemented. */
+  enum intr_level old_level = intr_disable();
+  thread_current()->nice = nice;
+  thread_current()->priority = mlfqs_priority(thread_current());
+
+  ready_priority_vs_curr_priority();
+  intr_set_level(old_level);
 }
 
 /* Returns the current thread's nice value. */
 int
 thread_get_nice (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  enum intr_level old_level = intr_disable();
+  int retval = thread_current()->nice;
+  intr_set_level(old_level);
+
+  return retval;
 }
 
 /* Returns 100 times the system load average. */
 int
 thread_get_load_avg (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  enum intr_level old_level = intr_disable();
+  int retval = X2I_R2N(MUL_N(load_avg, 100));
+  intr_set_level(old_level);
+
+  return retval;
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
 int
 thread_get_recent_cpu (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  enum intr_level old_level = intr_disable();
+  int retval;
+  retval = X2I_R2N(MUL_N(thread_current()->recent_cpu, 100));
+  intr_set_level(old_level);
+
+  return retval;
 }
+
+int mlfqs_priority(struct thread* t)
+{
+  return X2I_R2Z(ADD(DIV_N(t->recent_cpu, -4), (PRI_MAX - t->nice*2)));
+}
+
+int mlfqs_recent_cpu(struct thread* t)
+{
+  return ADD(MUL_Y(DIV_Y(MUL_N(load_avg, 2), ADD(MUL_N(load_avg, 2), 1)), t->recent_cpu), t->nice);
+}
+
+void mlfqs_incr_recent_cpu()
+{
+  enum intr_level old_level = intr_disable();
+  if(thread_current() != idle_thread)
+    thread_current()->recent_cpu = ADD(thread_current()->recent_cpu, 1);
+  intr_set_level(old_level);
+}
+
+// void mlfqs_recal_priority()
+// {
+//   enum intr_level old_level = intr_disable();
+//   thread_current()->priority = mlfqs_priority(thread_current());
+//   intr_set_level(old_level);
+// }
+
+void mlfqs_recal_priority_all()
+{
+  enum intr_level old_level = intr_disable();
+
+  struct list_elem *e;
+  for(e = list_begin(&all_list); e != list_end(&all_list); e = list_next(e))
+  {
+    struct thread* t = list_entry(e, struct thread, allelem);
+    if(t != idle_thread)
+      t->priority = mlfqs_priority(t);
+  }
+  intr_set_level(old_level);
+}
+
+void mlfqs_recal_recent_cpu_all()
+{
+  enum intr_level old_level = intr_disable();
+
+  struct list_elem *e;
+  for(e = list_begin(&all_list); e != list_end(&all_list); e = list_next(e))
+  {
+    struct thread* t = list_entry(e, struct thread, allelem);
+    if(t != idle_thread)
+      t->recent_cpu = mlfqs_recent_cpu(t);
+  }
+  intr_set_level(old_level);
+}
+
+void mlfqs_incr_load_avg()
+{
+  enum intr_level old_level = intr_disable();
+  load_avg = DIV_N((MUL_N(load_avg, 59)+N2F(((int)list_size(&ready_list)+(int)(thread_current() != idle_thread)))), 60);
+  intr_set_level(old_level);
+}
+
 
 /* Idle thread.  Executes when no other thread is ready to run.
 

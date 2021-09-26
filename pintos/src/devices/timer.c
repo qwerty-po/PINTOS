@@ -186,6 +186,18 @@ timer_interrupt (struct intr_frame *args UNUSED)
   ticks++;
   thread_tick ();
 
+  if(thread_mlfqs)
+  {
+    mlfqs_incr_recent_cpu();
+    if(!(ticks%4))
+      mlfqs_recal_priority_all();
+    if(!(timer_ticks()%TIMER_FREQ))
+    {
+      mlfqs_recal_recent_cpu_all();
+      mlfqs_incr_load_avg();
+    }
+  }
+
   for(e = list_begin(get_sleep_list()); e != list_end(get_sleep_list());)
   {
     struct thread *t = list_entry(e, struct thread, elem);

@@ -109,6 +109,10 @@ struct thread
     struct list donations;
     struct list_elem donation_elem;
     struct lock *inlock;
+
+    /* made for bsd */
+    int nice;
+    int recent_cpu;
   };
 
 /* If false (default), use round-robin scheduler.
@@ -156,5 +160,11 @@ bool compare_thread_priority(const struct list_elem *victim, const struct list_e
 void ready_priority_vs_curr_priority(void);
 
 int max(int x, int y);
+
+/* bsd schedular functions */
+void mlfqs_incr_recent_cpu();
+void mlfqs_recal_priority_all();
+void mlfqs_recal_recent_cpu_all();
+void mlfqs_incr_load_avg();
 
 #endif /* threads/thread.h */
