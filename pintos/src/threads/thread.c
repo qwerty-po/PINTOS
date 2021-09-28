@@ -23,15 +23,15 @@
 
 #define F (1<<14)
 #define NEG (1<<31)
-#define N2F(n) ((n)*F)
-#define X2I_R2Z(x) ((x)/F)
-#define X2I_R2N(x) (((((x)-F/2)/F)&((int)(x)>>31)) + ((((x)+F/2)/F)&(~((int)(x)>>31))))
-#define ADD(x, n) ((x) + (n)*F)
-#define SUB(x, n) ((x) - (n)*F)
+#define N2F(n) ((int)(n)*F)
+#define X2I_R2Z(x) ((int)(x)/F)
+#define X2I_R2N(x) (((((int)(x)-F/2)/F)&((int)(x)>>31)) + ((((int)(x)+F/2)/F)&(~((int)(x)>>31))))
+#define ADD(x, n) ((int)(x) + (n)*F)
+#define SUB(x, n) ((int)(x) - (n)*F)
 #define MUL_Y(x, y) (((int64_t) (x)) * (y) / F)
-#define MUL_N(x, n) ((x)*n)
+#define MUL_N(x, n) ((int)(x)*n)
 #define DIV_Y(x, y) (((int64_t) (x)) * F / (y))
-#define DIV_N(x, n) ((x)/n)
+#define DIV_N(x, n) ((int)(x)/(n))
 
 
 /* List of busy waiting */
@@ -440,7 +440,7 @@ thread_get_recent_cpu (void)
 
 int mlfqs_priority(struct thread* t)
 {
-  return X2I_R2Z(ADD(DIV_N(t->recent_cpu, -4), (PRI_MAX - t->nice*2)));
+  return max(min(X2I_R2Z(ADD(DIV_N(t->recent_cpu, -4), (PRI_MAX - t->nice*2))), PRI_MAX), 0);
 }
 
 int mlfqs_recent_cpu(struct thread* t)
@@ -494,7 +494,7 @@ void mlfqs_recal_recent_cpu_all()
 void mlfqs_incr_load_avg()
 {
   enum intr_level old_level = intr_disable();
-  load_avg = DIV_N((MUL_N(load_avg, 59)+N2F(((int)list_size(&ready_list)+(int)(thread_current() != idle_thread)))), 60);
+  load_avg = DIV_N(ADD(MUL_N(load_avg, 59),((int)list_size(&ready_list)+(int)(thread_current() != idle_thread))), 60);
   intr_set_level(old_level);
 }
 
@@ -734,7 +734,18 @@ void ready_priority_vs_curr_priority()
     thread_yield();
 }
 
+void ready_priority_vs_curr_priority_if_equal()
+{
+  if(thread_get_priority() <= list_entry(list_begin(&ready_list), struct thread, elem)->priority)
+    thread_yield();
+}
+
 int max(int x, int y)
 {
   return x > y ? x : y;
+}
+
+int min(int x, int y)
+{
+  return x > y ? y : x;
 }

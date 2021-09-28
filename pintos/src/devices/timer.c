@@ -193,8 +193,8 @@ timer_interrupt (struct intr_frame *args UNUSED)
       mlfqs_recal_priority_all();
     if(!(timer_ticks()%TIMER_FREQ))
     {
-      mlfqs_recal_recent_cpu_all();
       mlfqs_incr_load_avg();
+      mlfqs_recal_recent_cpu_all();
     }
   }
 
