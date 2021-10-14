@@ -734,12 +734,6 @@ void ready_priority_vs_curr_priority()
     thread_yield();
 }
 
-void ready_priority_vs_curr_priority_if_equal()
-{
-  if(thread_get_priority() <= list_entry(list_begin(&ready_list), struct thread, elem)->priority)
-    thread_yield();
-}
-
 int max(int x, int y)
 {
   return x > y ? x : y;

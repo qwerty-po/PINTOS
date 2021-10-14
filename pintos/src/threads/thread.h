@@ -160,11 +160,14 @@ bool compare_thread_priority(const struct list_elem *victim, const struct list_e
 void ready_priority_vs_curr_priority(void);
 
 int max(int x, int y);
+int min(int x, int y);
 
 /* bsd schedular functions */
-void mlfqs_incr_recent_cpu();
-void mlfqs_recal_priority_all();
-void mlfqs_recal_recent_cpu_all();
-void mlfqs_incr_load_avg();
+void mlfqs_incr_recent_cpu(void);
+void mlfqs_recal_priority_all(void);
+void mlfqs_recal_recent_cpu_all(void);
+void mlfqs_incr_load_avg(void);
+bool compare_wakeup_ticks(const struct list_elem *victim, const struct list_elem *e, void *aux);
+bool compare_thread_priority(const struct list_elem *victim, const struct list_elem *e, void *aux);
 
 #endif /* threads/thread.h */
